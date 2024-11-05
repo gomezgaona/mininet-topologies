@@ -8,10 +8,12 @@ from mininet.node import OVSKernelSwitch
 from mininet.cli import CLI
 
 def start_mininet_hosts(num_hosts, buffer_size):
+    RED = "\033[31m"
+    RESET = "\033[0m"
     net = Mininet(topo=None, build=False, ipBase='10.0.0.0/16')
 
-    host_sw = 16
-    if num_sw > host_sw:
+    host_sw = 32 # Hosts per switches
+    if num_hosts > host_sw:
         num_sw = int(num_hosts / host_sw)
     else:
         num_sw = 2
@@ -46,11 +48,11 @@ def start_mininet_hosts(num_hosts, buffer_size):
         ip_address = f'10.0.{third_octet}.{fourth_octet}/16'
         hs = net.addHost(f'hs{i+1}', ip=ip_address)
 
-        net.addLink(hs, s_left[int(i/16)])
+        net.addLink(hs, s_left[int(i/host_sw)])
         hs.cmd('sysctl -w net.ipv4.tcp_wmem="{} {} {}"'.format(buffer_size, buffer_size, buffer_size))
         hs.cmd('sysctl -w net.ipv4.tcp_rmem="{} {} {}"'.format(buffer_size, buffer_size, buffer_size))
 
-    print(f"Range of IP addresses of left hosts 10.0.0.1-10.0.{third_octet}.{fourth_octet}")
+    print(f"{RED}Range of IP addresses of left hosts 10.0.0.1-10.0.{third_octet}.{fourth_octet} {RESET}")
     # Creating hosts on the right
     print("Creating right hosts")
     for i in range(num_hosts):
@@ -60,11 +62,11 @@ def start_mininet_hosts(num_hosts, buffer_size):
         ip_address = f'10.0.{third_octet}.{fourth_octet}/16'
         hr = net.addHost(f'hr{i+1}', ip=ip_address)
 
-        net.addLink(hr, s_right[int(i/16)])
+        net.addLink(hr, s_right[int(i/host_sw)])
         hr.cmd('sysctl -w net.ipv4.tcp_wmem="{} {} {}"'.format(buffer_size, buffer_size, buffer_size))
         hr.cmd('sysctl -w net.ipv4.tcp_rmem="{} {} {}"'.format(buffer_size, buffer_size, buffer_size))
 
-    print(f"Range of IP addresses of right hosts 10.0.10.1-10.0.{third_octet}.{fourth_octet}")
+    print(f"{RED}Range of IP addresses of right hosts 10.0.10.1-10.0.{third_octet}.{fourth_octet} {RESET}")
     print(f"Setting TCP send and receive buffers to {buffer_size} Mbytes")
     
     # Start the network
