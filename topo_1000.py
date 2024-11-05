@@ -2,40 +2,70 @@
 
 import os
 import subprocess
+import sys
 from mininet.net import Mininet
 from mininet.node import OVSKernelSwitch
 from mininet.cli import CLI
 
 def start_mininet_hosts(num_hosts, buffer_size):
-    if(num_hosts > 254):
-        print("You are trying to add more than 254 senders and receivers")
-        return
-    net = Mininet(topo=None, build=False, ipBase='10.0.0.0/24')
+    net = Mininet(topo=None, build=False, ipBase='10.0.0.0/16')
 
-    # Create switches
-    s1 = net.addSwitch('s1', cls=OVSKernelSwitch, failMode='standalone')
-    s2 = net.addSwitch('s2', cls=OVSKernelSwitch, failMode='standalone')
-    s3 = net.addSwitch('s3', cls=OVSKernelSwitch, failMode='standalone')
-    print("Creating switches")
-    net.addLink(s1, s3)
-    net.addLink(s2, s3)
-    # Start hosts and connect them to the switch
-    for i in range(1, int(num_hosts/2) + 1):
-        h = net.addHost(f'h{i}', ip=f'10.0.0.{i}/24')
-        net.addLink(h, s1)
+    host_sw = 16
+    if num_sw > host_sw:
+        num_sw = int(num_hosts / host_sw)
+    else:
+        num_sw = 2
+
+    # Creating switches
+    s_left = []
+    s_right = []
+    print("Creating left and right switches")
+    for i in range(0, num_sw):
+        s_left.append(net.addSwitch(f's_left{i+1}', cls=OVSKernelSwitch, failMode='standalone'))
+        s_right.append(net.addSwitch(f's_right{i+1}', cls=OVSKernelSwitch, failMode='standalone'))
     
-    for i in range(int(num_hosts/2) + 1, num_hosts):
-        h = net.addHost(f'h{i}', ip=f'10.0.0.{i}/24')
-        net.addLink(h, s2)
+    # Aggregator switches 
+    print("Creating aggregator switches")
+    s_agg1 = net.addSwitch('s_agg1', cls=OVSKernelSwitch, failMode='standalone')
+    s_agg2 = net.addSwitch('s_agg2', cls=OVSKernelSwitch, failMode='standalone')
+
+    print("Linking aggregator switches")
+    net.addLink(s_agg1,s_agg2)
+    # Connecting all the switches to the aggregator
+    print("Linking left and right switches to the aggregator switches")
+    for i in range(0, num_sw):
+        net.addLink(s_left[i], s_agg1)
+        net.addLink(s_right[i], s_agg2)
  
-    for i in range(1, num_hosts + 1):    
-        h.cmd('sysctl -w net.ipv4.tcp_wmem="{} {} {}"'.format(buffer_size, buffer_size, buffer_size))
-        h.cmd('sysctl -w net.ipv4.tcp_rmem="{} {} {}"'.format(buffer_size, buffer_size, buffer_size))
-    
-    for i in range(1, num_hosts + 1):
-         h.cmd('ip route add 20.0.0.0/24 via 10.0.0.0.254')
-    print(f"Creating hosts, setting TCP send and receive buffers to {buffer_size}, and connecting hosts to the switches")
-    
+    # Creating hosts on the left
+    print("Creating left hosts")
+    for i in range(num_hosts):
+        third_octet = (i // 254) % 256
+        fourth_octet = (i % 254) + 1
+
+        ip_address = f'10.0.{third_octet}.{fourth_octet}/16'
+        hs = net.addHost(f'hs{i+1}', ip=ip_address)
+
+        net.addLink(hs, s_left[int(i/16)])
+        hs.cmd('sysctl -w net.ipv4.tcp_wmem="{} {} {}"'.format(buffer_size, buffer_size, buffer_size))
+        hs.cmd('sysctl -w net.ipv4.tcp_rmem="{} {} {}"'.format(buffer_size, buffer_size, buffer_size))
+
+    print(f"Range of IP addresses of left hosts 10.0.0.1-10.0.{third_octet}.{fourth_octet}")
+    # Creating hosts on the right
+    print("Creating right hosts")
+    for i in range(num_hosts):
+        third_octet = (i // 254) % 256 + 10
+        fourth_octet = (i % 254) + 1
+        
+        ip_address = f'10.0.{third_octet}.{fourth_octet}/16'
+        hr = net.addHost(f'hr{i+1}', ip=ip_address)
+
+        net.addLink(hr, s_right[int(i/16)])
+        hr.cmd('sysctl -w net.ipv4.tcp_wmem="{} {} {}"'.format(buffer_size, buffer_size, buffer_size))
+        hr.cmd('sysctl -w net.ipv4.tcp_rmem="{} {} {}"'.format(buffer_size, buffer_size, buffer_size))
+
+    print(f"Range of IP addresses of right hosts 10.0.10.1-10.0.{third_octet}.{fourth_octet}")
+    print(f"Setting TCP send and receive buffers to {buffer_size} Mbytes")
     
     # Start the network
     net.start()
@@ -46,11 +76,20 @@ def start_mininet_hosts(num_hosts, buffer_size):
     
     # Clean up after the network has been stopped
     net.stop()
+    
 
-# Enter the number of hosts
-num_hosts = 100
-TCP_buffer_size = "4096 1000000 200000000"
+def main():
+    if len(sys.argv) > 1:
+        num_hosts = int(sys.argv[1])
+        if num_hosts > 1024:
+            print("The maximum number of hosts allowed is 1024")
+            exit()
+    else:
+        print("No arguments passed. Specify the number of hosts e.g., sudo python3 topo_1000.py 1024")
+        exit()
 
-start_mininet_hosts(num_hosts, TCP_buffer_size)
+    TCP_buffer_size = "4096 1000000 200000000"
+    start_mininet_hosts(num_hosts, TCP_buffer_size)
 
-
+if __name__ == "__main__":
+    main()
